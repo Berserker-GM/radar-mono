@@ -1,0 +1,43 @@
+[project]
+name = "radar"
+version = "0.1.0"
+description = "Opportunity & Deadline Radar"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.0",
+    "google-api-python-client>=2.201.0",
+    "google-auth-oauthlib>=1.5.0",
+    "beautifulsoup4>=4.12",
+    "httpx>=0.28.1",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2",
+    "sqlalchemy>=2,<3",
+    "psycopg[binary]>=3.2",
+    "fastapi>=0.143.0",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "respx>=0.23.1",
+    "ruff",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: calls Google Calendar or the configured LLM; set RADAR_LIVE_TESTS=1 to run",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

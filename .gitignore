@@ -1,0 +1,31 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.log
+
+# Tauri / Rust
+desktop/src-tauri/target/
+desktop/src-tauri/gen/schemas/
+
+# Secrets and local data
+.env
+token.json
+credentials.json
+client_secret*.json
+*.db
+settings.json
+notices.html
+
+# Editors and OS
+.idea/
+.DS_Store
