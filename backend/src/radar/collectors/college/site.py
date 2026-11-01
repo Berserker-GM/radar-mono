@@ -11,8 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from radar.collectors.base import Collector, CollectResult, RawEvent
-from radar.llm.client import LLM
-from radar.llm.extract import (
+from radar.collectors.college.extract import (
     ExtractionError,
     extract_notice,
     normalize_text,
@@ -58,14 +57,12 @@ class CollegeSiteCollector(Collector):
         *,
         list_url: str,
         selectors: NoticeSelectors,
-        llm: LLM,
         seen: set[tuple[str, str]] | None = None,
         source_name: str = "college",
         today: date | None = None,
     ) -> None:
         self.list_url = list_url
         self.selectors = selectors
-        self.llm = llm
         self.seen = set(seen or ())
         self.source_name = source_name
         self.today = today
@@ -98,7 +95,7 @@ class CollegeSiteCollector(Collector):
                 digest = notice_content_hash(text)
                 if (item.url, digest) in self.seen:
                     continue
-                notice = extract_notice(text, self.llm, today=self.today)
+                notice = extract_notice(text, today=self.today)
                 raw = to_raw_event(
                     notice,
                     source_name=self.source_name,

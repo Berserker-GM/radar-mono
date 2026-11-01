@@ -20,10 +20,7 @@ class Settings(BaseSettings):
     google_token_json: str | None = None
     google_calendar_id: str = "primary"
     alert_webhook_url: str | None = None
-    llm_provider: str | None = None
-    llm_model: str | None = None
-    anthropic_api_key: str | None = None
-    openai_api_key: str | None = None
+    digest_webhook_url: str | None = None
 
 
 def get_settings() -> Settings:

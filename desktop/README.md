@@ -7,8 +7,10 @@ picked, and start a scan with **Scan now**.
 
 The app fetches the feed on startup and again every 30 minutes, and refetches when you open the popup
 if the data is more than 5 minutes old. It pauses while the machine is offline. When an item becomes an
-important unseen update, it shows a desktop notification. Right-click the tray icon for **Refresh**,
-**Start with Windows** and **Quit**.
+important unseen update, it shows a desktop notification. Approaching deadlines get escalating
+reminders at 24 hours, 3 hours and 1 hour before their key date, each fired once. The tray tooltip
+counts down to the next deadline ("Radar — next deadline in 3 h 12 min"). Right-click the tray icon
+for **Refresh**, **Start with Windows** and **Quit**.
 
 Built with Tauri 2 and TypeScript (Vite).
 

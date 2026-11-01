@@ -6,7 +6,15 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Request
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    HTTPException,
+    Request,
+    Response,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
@@ -19,6 +27,7 @@ from radar.calendar.google import (
     GoogleCalendarService,
     build_google_events_client,
 )
+from radar.calendar.ics import build_ics, select_export_events
 from radar.config import Settings, get_settings
 from radar.db import SessionLocal
 from radar.models import (
@@ -391,6 +400,29 @@ public = APIRouter()
 @public.get("/health", response_model=HealthOut)
 def get_health() -> HealthOut:
     return HealthOut(ok=True)
+
+
+@public.get("/feed.ics")
+def get_feed_ics(
+    token: str,
+    session: Session = Depends(get_session),
+) -> Response:
+    """Calendar apps cannot send Bearer headers; the token travels in the URL."""
+
+    expected = get_settings().api_token
+    if not expected or not token or not secrets.compare_digest(token, expected):
+        raise HTTPException(
+            status_code=401,
+            detail="unauthorized",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    events = select_export_events(session, USER_ID, datetime.now(UTC))
+    body = build_ics(events, datetime.now(UTC))
+    return Response(
+        content=body,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": 'inline; filename="radar.ics"'},
+    )
 
 
 def create_app(session_factory: sessionmaker[Session] | None = None) -> FastAPI:

@@ -15,6 +15,21 @@ make run-api                # http://127.0.0.1:8000
 Every endpoint needs `Authorization: Bearer <API_TOKEN>`. Use the same URL and token in the desktop
 app's setup form. To scan from the command line instead: `uv run python -m radar.cli scan-all`.
 
+Calendar apps cannot send bearer headers, so `GET /feed.ics?token=<API_TOKEN>` (no bearer header)
+serves the saved, college and urgent slice of the feed as an iCalendar URL you can subscribe to from
+Google Calendar ("From URL") or any other calendar app.
+
+## Sources
+
+The API sources (codeforces, clist, devpost, unstop, devfolio, leetcode) need no configuration.
+The config-driven ones are skipped until their `sources` row has a `config`:
+
+| Source | `config` JSON |
+| --- | --- |
+| `college` | `{"list_url": "https://...", "selectors": {"title": "a.notice-title", "link": "a.notice-title", "date": "time.notice-date"}}` |
+| `rss` | `{"feeds": ["https://example/feed.xml", {"url": "...", "category": "college"}]}` |
+| `ics` | `{"calendars": ["https://example.org/calendar.ics"]}` |
+
 ## Environment variables
 
 Set these in `.env`. `.env.example` lists all of them.
@@ -28,6 +43,8 @@ Set these in `.env`. `.env.example` lists all of them.
 | `GOOGLE_TOKEN_PATH` | Path to the OAuth token file. Defaults to `token.json`. |
 | `GOOGLE_TOKEN_JSON` | Contents of that token file, used instead of the path. Use this in CI. |
 | `GOOGLE_CALENDAR_ID` | Calendar that events are added to. Defaults to `primary`. |
+| `ALERT_WEBHOOK_URL` | Optional. A Discord webhook or Telegram `sendMessage` URL that is notified when a source fails or goes stale. |
+| `DIGEST_WEBHOOK_URL` | Optional. A Discord webhook or Telegram `sendMessage` URL that receives a daily digest of the feed after each `scan-all`. |
 
 To create `token.json`, download an OAuth client of type "Desktop app" from Google Cloud as
 `credentials.json` in this folder, then run `uv run python scripts/google_calendar_auth.py` and approve
@@ -51,6 +68,10 @@ Add these under **Settings → Secrets and variables → Actions**:
 | `GOOGLE_TOKEN_JSON` | The full contents of `token.json`. |
 | `GOOGLE_CALENDAR_ID` | Optional; defaults to `primary`. |
 | `ALERT_WEBHOOK_URL` | Optional. A Discord webhook or Telegram `sendMessage` URL that is notified when a source fails or goes stale. |
+| `DIGEST_WEBHOOK_URL` | Optional. Sends the daily digest right after the scan. |
+
+The digest can also be sent on demand: `uv run python -m radar.cli digest` (exits non-zero when
+`DIGEST_WEBHOOK_URL` is not set).
 
 ## Development
 

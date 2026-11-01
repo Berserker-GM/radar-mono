@@ -1,5 +1,4 @@
 import asyncio
-import json
 from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
@@ -13,6 +12,7 @@ from sqlalchemy import event as sa_event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from radar.collectors.college.extract import ExtractedNotice, NoticeCategory
 from radar.collectors.college.site import (
     CollegeSiteCollector,
     NoticeSelectors,
@@ -20,7 +20,6 @@ from radar.collectors.college.site import (
     load_seen_notices,
     notice_content_hash,
 )
-from radar.llm.extract import ExtractedNotice, NoticeCategory, to_raw_event
 from radar.models import (
     Base,
     EventCategory,
@@ -33,10 +32,10 @@ from radar.pipeline.ingest import ingest
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "college"
 _SITE = _FIXTURES / "site"
-_LLM = _FIXTURES / "llm"
 LIST_URL = "https://college.example/notices/"
 OLD_URL = "https://college.example/notices/old"
 WORKSHOP_URL = "https://college.example/notices/workshop"
+SCHOLARSHIP_URL = "https://college.example/notices/scholarship"
 SELECTORS = NoticeSelectors(
     title="a.notice-title",
     link="a.notice-title",
@@ -44,37 +43,17 @@ SELECTORS = NoticeSelectors(
 )
 TODAY = date(2026, 10, 11)
 
-
-class FixtureLLM:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self.payload = payload
-        self.calls = 0
-
-    def complete_json(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
-        self.calls += 1
-        return self.payload
-
-
-class BoomLLM:
-    def complete_json(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
-        raise AssertionError("LLM should not be called")
-
-
-class BadLLM:
-    def __init__(self) -> None:
-        self.calls = 0
-
-    def complete_json(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
-        self.calls += 1
-        return {"is_actionable": "nope"}
+_SCHOLARSHIP_HTML = """
+<html><body><article>
+<h1>Merit Scholarship 2026</h1>
+<p>Applications for the merit scholarship are open to 3rd year students.
+Last date to apply: 20th October 2026, 5:00 PM.</p>
+</article></body></html>
+"""
 
 
 def _html(name: str) -> str:
     return (_SITE / name).read_text(encoding="utf-8")
-
-
-def _workshop_payload() -> dict[str, Any]:
-    return json.loads((_LLM / "workshop.json").read_text(encoding="utf-8"))
 
 
 def _seen_hash(name: str) -> str:
@@ -82,7 +61,6 @@ def _seen_hash(name: str) -> str:
 
 
 def _collect(
-    llm: FixtureLLM | BoomLLM | BadLLM,
     seen: set[tuple[str, str]],
     *,
     list_html: str | None = None,
@@ -105,10 +83,13 @@ def _collect(
                 respx.get(WORKSHOP_URL).mock(
                     return_value=httpx.Response(200, text=details["workshop"])
                 )
+            if details and "scholarship" in details:
+                respx.get(SCHOLARSHIP_URL).mock(
+                    return_value=httpx.Response(200, text=details["scholarship"])
+                )
             collector = CollegeSiteCollector(
                 list_url=LIST_URL,
                 selectors=selectors,
-                llm=llm,
                 seen=seen,
                 today=TODAY,
             )
@@ -118,12 +99,10 @@ def _collect(
 
 
 def test_new_notice_is_extracted_once() -> None:
-    llm = FixtureLLM(_workshop_payload())
-    result = _collect(llm, seen={(OLD_URL, _seen_hash("old.html"))})
+    result = _collect(seen={(OLD_URL, _seen_hash("old.html"))})
 
     assert result.status == "ok"
     assert result.error is None
-    assert llm.calls == 1
     assert len(result.events) == 1
     event = result.events[0]
     assert event.category is EventCategory.COLLEGE
@@ -131,54 +110,61 @@ def test_new_notice_is_extracted_once() -> None:
     assert event.url == WORKSHOP_URL
     assert event.lifecycle is Lifecycle.UNKNOWN
     assert event.registration_deadline is None
+    assert event.location == "main auditorium"
     assert event.start_at is not None
-    assert event.confidence["start_at"] == 0.95
+    assert event.start_at.day == 15
+    assert event.confidence["start_at"] == 0.85
     assert event.extra["notice_hash"] == _seen_hash("workshop.html")
     assert event.extra["notice_category"] == "college"
     by_field = {item.field: item for item in event.evidence}
     assert by_field["start_at"].source_url == WORKSHOP_URL
-    assert by_field["start_at"].source_text == "workshop on October 15"
+    assert "October 15" in by_field["start_at"].source_text
 
 
 def test_scholarship_notice_is_still_a_college_event() -> None:
-    payload = _workshop_payload()
-    payload["category"] = "scholarship"
-    llm = FixtureLLM(payload)
-    result = _collect(llm, seen={(OLD_URL, _seen_hash("old.html"))})
+    result = _collect(
+        seen=set(),
+        list_html="""
+        <a class="notice-title" href="/notices/scholarship">Merit Scholarship 2026</a>
+        """,
+        pages={"scholarship": _SCHOLARSHIP_HTML},
+    )
 
-    assert result.events[0].category is EventCategory.COLLEGE
-    assert result.events[0].extra["notice_category"] == "scholarship"
+    assert result.status == "ok"
+    assert len(result.events) == 1
+    event = result.events[0]
+    assert event.category is EventCategory.COLLEGE
+    assert event.extra["notice_category"] == "scholarship"
+    assert event.registration_deadline is not None
+    assert event.registration_deadline.hour == 17
 
 
-def test_unchanged_notice_does_not_call_the_llm() -> None:
+def test_unchanged_notice_is_skipped() -> None:
     seen = {
         (OLD_URL, _seen_hash("old.html")),
         (WORKSHOP_URL, _seen_hash("workshop.html")),
     }
 
-    result = _collect(BoomLLM(), seen)
+    result = _collect(seen)
 
     assert result.status == "ok"
     assert result.error is None
     assert result.events == []
 
 
-def test_changed_hash_calls_the_llm() -> None:
-    llm = FixtureLLM(_workshop_payload())
+def test_changed_hash_is_reextracted() -> None:
     seen = {
         (OLD_URL, _seen_hash("old.html")),
         (WORKSHOP_URL, "stale"),
     }
 
-    result = _collect(llm, seen)
+    result = _collect(seen)
 
-    assert llm.calls == 1
     assert [event.external_id for event in result.events] == [WORKSHOP_URL]
 
 
 def test_selectors_matching_nothing_is_malformed() -> None:
     result = _collect(
-        BoomLLM(),
         seen=set(),
         list_html=_html("empty.html"),
         pages={},
@@ -197,7 +183,6 @@ def test_uneven_selectors_are_malformed() -> None:
     <time class="notice-date">1 Oct 2026</time>
     """
     result = _collect(
-        BoomLLM(),
         seen=set(),
         list_html=html,
         selectors=NoticeSelectors(
@@ -220,7 +205,6 @@ def test_network_failure_is_unreachable() -> None:
             collector = CollegeSiteCollector(
                 list_url=LIST_URL,
                 selectors=SELECTORS,
-                llm=BoomLLM(),
                 today=TODAY,
             )
             return await collector.collect()
@@ -232,14 +216,17 @@ def test_network_failure_is_unreachable() -> None:
     assert result.error
 
 
-def test_invalid_llm_json_is_malformed() -> None:
-    llm = BadLLM()
-    result = _collect(llm, seen=set())
+def test_unactionable_detail_page_yields_no_events() -> None:
+    result = _collect(
+        seen=set(),
+        list_html="""
+        <a class="notice-title" href="/notices/old">Archived notice</a>
+        """,
+        pages={"old": _html("old.html")},
+    )
 
-    assert llm.calls == 2
-    assert result.status == "malformed"
+    assert result.status == "ok"
     assert result.events == []
-    assert result.error
 
 
 @pytest.fixture
@@ -274,11 +261,12 @@ def test_load_seen_notices_reads_the_stored_hash(session: Session) -> None:
     session.add(source)
     session.flush()
     notice = ExtractedNotice(
-        is_actionable=True,
+        actionable=True,
         category=NoticeCategory.COLLEGE,
         title="Workshop on October 15",
-        confidence=1,
     )
+    from radar.collectors.college.extract import to_raw_event
+
     raw = to_raw_event(
         notice,
         source_name="college",

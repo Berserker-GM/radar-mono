@@ -15,7 +15,7 @@ Say what you found, where (file, commit or URL) and how to reproduce it.
 ## If a secret was committed
 
 Treat it as compromised even if the commit has been removed. Rotate it first (Neon password,
-`API_TOKEN`, Google OAuth token, clist.by key, LLM API keys, alert webhook), then update the GitHub
+`API_TOKEN`, Google OAuth token, clist.by key, alert or digest webhook), then update the GitHub
 Actions secrets and your local `.env`.
 
 ## Supported versions

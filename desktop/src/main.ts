@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ignoreEvent, saveEvent, unsaveEvent } from "./actions.ts";
@@ -19,7 +20,8 @@ import {
   type ScanStart,
 } from "./api.ts";
 import type { FeedItem, ParsedFeed, SectionId } from "./feed.ts";
-import { checkImportant } from "./notify.ts";
+import { SECTIONS } from "./feed.ts";
+import { checkDeadlineReminders, checkImportant } from "./notify.ts";
 import { readSettings, writeSettings, type Settings } from "./settings.ts";
 import {
   renderFeed,
@@ -42,6 +44,8 @@ const IDLE_MS = 10 * 60_000;
 /** After an idle spell, a feed request still pending after this long is probably a cold start. */
 const WAKING_AFTER_MS = 2_500;
 const WAKING = "Waking the server… (the free host can take up to a minute)";
+/** Deadline reminders are re-checked on this cadence, independent of feed polls. */
+const REMINDER_CHECK_MS = 10 * 60_000;
 
 type ScanState = Omit<FooterState, "note">;
 const IDLE_SCAN: ScanState = { scanning: false, message: null, sources: [] };
@@ -383,8 +387,27 @@ function recordFetch(next: ParsedFeed | null, apiUrl: string): void {
     lastSuccessAt = lastAttemptAt;
     refreshNote = null;
     void checkImportant(next, apiUrl, popupOpen);
+    void checkDeadlineReminders(next, apiUrl);
+    updateTooltipDeadline(next);
   }
   schedulePoll();
+}
+
+/** Tells the tray to count down to the earliest key date still ahead. */
+function updateTooltipDeadline(next: ParsedFeed): void {
+  const now = Date.now();
+  let earliest: number | null = null;
+  for (const section of SECTIONS) {
+    for (const item of next.sections[section.id]) {
+      if (item.key_at === null) continue;
+      const at = Date.parse(item.key_at);
+      if (Number.isNaN(at) || at <= now) continue;
+      if (earliest === null || at < earliest) earliest = at;
+    }
+  }
+  void invoke("set_next_deadline", { atMs: earliest }).catch(() => {
+    // The command only exists inside the Tauri app; browser dev ignores it.
+  });
 }
 
 /** Keeps at most one pending fetch, due POLL_MS after the last attempt. Idle while open or offline. */
@@ -518,6 +541,14 @@ async function boot(): Promise<void> {
 
   window.addEventListener("online", onOnline);
   window.addEventListener("offline", onOffline);
+
+  // Reminders fire between feed polls so a 1h warning lands on time even
+  // when the machine has been idle past the 30 minute poll.
+  window.setInterval(() => {
+    if (feed !== null && saved !== null && navigator.onLine) {
+      void checkDeadlineReminders(feed, saved.apiUrl);
+    }
+  }, REMINDER_CHECK_MS);
 
   try {
     await listen("refresh", () => {

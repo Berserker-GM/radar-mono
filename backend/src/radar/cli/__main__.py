@@ -3,14 +3,17 @@
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 
+from radar.config import get_settings
 from radar.db import SessionLocal
 from radar.models import EventVersion, Source
+from radar.pipeline.digest import send_digest
 from radar.pipeline.ingest import SourceRunResult
 from radar.pipeline.scan import ScanAlreadyRunning, run_scan
 from radar.pipeline.sources import (
@@ -19,8 +22,12 @@ from radar.pipeline.sources import (
 from radar.pipeline.sources import (
     scan_clist,
     scan_codeforces,
+    scan_college,
     scan_devfolio,
     scan_devpost,
+    scan_ics,
+    scan_leetcode,
+    scan_rss,
     scan_unstop,
 )
 
@@ -28,8 +35,12 @@ __all__ = [
     "main",
     "scan_clist",
     "scan_codeforces",
+    "scan_college",
     "scan_devfolio",
     "scan_devpost",
+    "scan_ics",
+    "scan_leetcode",
+    "scan_rss",
     "scan_unstop",
 ]
 
@@ -40,10 +51,14 @@ def main(argv: list[str] | None = None) -> None:
     scan = sub.add_parser("scan")
     scan.add_argument("source")
     sub.add_parser("scan-all")
+    sub.add_parser("digest")
     sub.add_parser("sources")
     args = parser.parse_args(argv)
     if args.command == "scan-all":
         _scan_all()
+        return
+    if args.command == "digest":
+        _digest()
         return
     if args.command == "sources":
         _print_sources()
@@ -83,13 +98,35 @@ def format_health_table(sources: Sequence[Source]) -> str:
 
 
 def _scan_all() -> None:
-    with SessionLocal() as session:
-        try:
+    try:
+        with SessionLocal() as session:
             code = run_scan(session)
-        except ScanAlreadyRunning as exc:
-            print(str(exc), file=sys.stderr)
-            raise SystemExit(1) from exc
+    except ScanAlreadyRunning as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+    _maybe_digest()
     raise SystemExit(code)
+
+
+def _digest() -> None:
+    with SessionLocal() as session:
+        sent = send_digest(session)
+    if not sent:
+        print(
+            "DIGEST_WEBHOOK_URL is not set; nothing was sent",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+
+def _maybe_digest() -> None:
+    if get_settings().digest_webhook_url is None:
+        return
+    try:
+        with SessionLocal() as session:
+            send_digest(session)
+    except Exception:
+        logging.getLogger(__name__).warning("digest send failed", exc_info=True)
 
 
 def _print_sources() -> None:

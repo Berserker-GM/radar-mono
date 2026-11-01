@@ -26,7 +26,7 @@ cd src-tauri
 cargo check
 ```
 
-Tests marked `live` call Google Calendar or an LLM and are skipped unless `RADAR_LIVE_TESTS=1` is set.
+Tests marked `live` call Google Calendar and are skipped unless `RADAR_LIVE_TESTS=1` is set.
 CI must not depend on them.
 
 ## Guidelines

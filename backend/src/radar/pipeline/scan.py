@@ -28,7 +28,7 @@ from radar.models import (
     SourceResult,
 )
 from radar.pipeline.ingest import SourceRunResult, ingest_run
-from radar.pipeline.sources import SCANNERS
+from radar.pipeline.sources import API_SOURCE_NAMES, SCANNERS
 
 LOCAL_USER = "local"
 CALENDAR_AUTH_ALERT = "Google token expired, re-run the auth script"
@@ -237,7 +237,7 @@ def _known_names(
 
 def _ensure_builtins(session: Session) -> None:
     existing = set(session.scalars(select(Source.name)).all())
-    for name in BUILTIN_SOURCE_NAMES:
+    for name in sorted(API_SOURCE_NAMES):
         if name in existing:
             continue
         session.add(

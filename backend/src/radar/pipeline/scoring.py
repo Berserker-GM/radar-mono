@@ -429,13 +429,47 @@ def _matching_companies(event: Event, companies: tuple[str, ...]) -> list[str]:
     if isinstance(event.organizer, str) and event.organizer.strip():
         haystacks.append(event.organizer)
     return [
-        name for name in companies if any(_named_in(text, name) for text in haystacks)
+        name
+        for name in companies
+        if any(_names_match(name, text) for text in haystacks)
     ]
 
 
 def _matching_names(wanted: tuple[str, ...], tags: list[str]) -> list[str]:
-    folded = {tag.casefold() for tag in tags}
-    return [name for name in wanted if name.casefold() in folded]
+    return [name for name in wanted if any(_names_match(name, tag) for tag in tags)]
+
+
+# Prefs match fuzzily: synonyms cover abbreviations, token containment covers
+# qualifiers ("google" vs "google india"), and a short prefix covers
+# "web" vs "webdev". Both sides canonicalize, so "ml" meets "ML" either way.
+_SYNONYMS: dict[str, str] = {
+    "ml": "machine learning",
+    "ai": "artificial intelligence",
+    "nlp": "natural language processing",
+    "dl": "deep learning",
+    "cv": "computer vision",
+}
+
+
+def _names_match(wanted: str, candidate: str) -> bool:
+    a = _canonical(wanted)
+    b = _canonical(candidate)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    a_tokens = set(a.split())
+    b_tokens = set(b.split())
+    smaller, larger = sorted((a_tokens, b_tokens), key=len)
+    if smaller and all(token in larger for token in smaller):
+        return True
+    short, long = sorted((a, b), key=len)
+    return len(short) >= 3 and long.startswith(short)
+
+
+def _canonical(name: str) -> str:
+    folded = name.casefold().strip()
+    return _SYNONYMS.get(folded, folded)
 
 
 def _sponsor_names(sponsors: Any) -> list[str]:
