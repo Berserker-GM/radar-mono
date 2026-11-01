@@ -93,7 +93,10 @@ def test_matching_hackathons_from_two_sources_become_one_event(
             )
         ],
     )
-    ingest(
+    # The merged event is only weakly referenced by the identity map until the
+    # session ends; holding the ingest result keeps it alive so the asserts
+    # below read the in-memory aware datetimes, not a naive SQLite reload.
+    merged = ingest(
         session,
         unstop,
         [
@@ -110,6 +113,7 @@ def test_matching_hackathons_from_two_sources_become_one_event(
             )
         ],
     )
+    assert merged.changed
 
     events = _events(session)
     assert len(events) == 1

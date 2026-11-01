@@ -34,5 +34,6 @@ jobs:
           CLIST_USERNAME: ${{ secrets.CLIST_USERNAME }}
           CLIST_API_KEY: ${{ secrets.CLIST_API_KEY }}
           ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          DIGEST_WEBHOOK_URL: ${{ secrets.DIGEST_WEBHOOK_URL }}
           GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
           GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}

@@ -19,7 +19,7 @@ Cloud job scans sources once daily (12:00-17:00 IST). Desktop tray client pulls 
   first_seen_at, last_seen_at, content_hash
   UNIQUE(source_id, external_id) when external_id is not null.
 - EventEvidence: id, event_id, field, source_url, source_text (verbatim quote), confidence, captured_at
-  (required for every LLM-extracted date, deadline, eligibility and location)
+  (required for every extracted date, deadline, eligibility and location)
 - EventVersion: id, event_id, seen_at, changed_fields JSON (field -> [old, new]),
   importance (important|minor), snapshot JSON
 - UserPrefs: user_id, JSON (modes, locations, min_prize, student_only, companies, topics,
@@ -38,7 +38,7 @@ Cloud job scans sources once daily (12:00-17:00 IST). Desktop tray client pulls 
 - Any change to a tracked field creates an EventVersion. Changes to IMPORTANT_FIELDS
   (registration_deadline, start_at, end_at, location, mode, eligibility, lifecycle, prize_amount_inr)
   are importance=important and notify the user. All other changes are minor (history only).
-- Unchanged content_hash means skip all downstream work (saves LLM cost). Titles are
+- Unchanged content_hash means skip all downstream work. Titles are
   whitespace/case-normalized before hashing so cosmetic differences are not changes.
 - Three independent signals, never merged into one number:
   relevance (how much the user cares), confidence (how sure we are the data is right),
@@ -55,7 +55,9 @@ Cloud job scans sources once daily (12:00-17:00 IST). Desktop tray client pulls 
 - A failing source never fails the whole scan. It is recorded in ScanRun and Source health and shown to the user.
 - Source health: healthy = last run ok; degraded = 1-2 consecutive failures; failed = 3+;
   stale = no success in 48h; disabled = enabled is false.
-- LLM is used only for unstructured text (college notices). APIs use deterministic parsing.
-  The LLM is never called when content_hash is unchanged. LLM output is validated against a Pydantic
-  schema, retried once, then recorded as a failure. Every extracted date must carry a verbatim quote
-  that exists in the source text, or the field is dropped.
+- No LLM anywhere. College notices (the only unstructured source) are parsed with deterministic
+  rules: labeled lines ("Deadline:", "Venue:") classify directly; unlabeled dates are classified by
+  keyword role (extension > deadline > event); a date matching no keyword is a mention and is
+  dropped. When content_hash is unchanged the notice is not re-parsed. Every extracted field must
+  carry a verbatim quote that exists in the source text — the matched span itself — or the field is
+  dropped. Labeled matches carry confidence 1.0, keyword matches 0.85.

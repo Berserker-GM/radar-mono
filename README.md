@@ -18,15 +18,17 @@ scores what it finds, and puts the important items in a small system-tray app, w
  Codeforces -------+
  Devfolio ---------+        +--------------------+      +--------------------+
  Devpost ----------+------> | collect -> ingest  | ---> | Neon Postgres      |
- Unstop -----------+        | (dedupe, LLM       |      |   (prod / CI)      |
- College notices --+        |  extract) -> score |      | SQLite radar.db    |
-                            +--------------------+      |   (local dev)      |
+ Unstop -----------+        | (dedupe, rule-     |      |   (prod / CI)      |
+ LeetCode ----------+       |  based extraction) |      | SQLite radar.db    |
+ RSS feeds ---------+       |        -> score    |      |   (local dev)      |
+ ICS calendars ----+         +--------------------+      +--------------------+
+ College notices --+
           ^                                             +---------+----------+
           | daily-scan.yml (07:30 UTC)                            |
           | or "Scan now" from the tray                           v
                                                         +--------------------+
  Google Calendar <-- "Add to Calendar" ---------------- | FastAPI            |
-                                                        | Bearer API_TOKEN   |
+ Calendar apps  <-- GET /feed.ics (token in URL) -----  | Bearer API_TOKEN   |
                                                         +---------+----------+
                                                                   | GET /feed, actions
                                                                   v
@@ -35,6 +37,10 @@ scores what it finds, and puts the important items in a small system-tray app, w
                                                         | popup + notices    |
                                                         +--------------------+
 ```
+
+Everything runs without any LLM or paid API. College notices are parsed with
+deterministic rules (labeled lines, keyword roles, dateparser); contests,
+hackathons and feeds come from structured APIs.
 
 ## Repository layout
 

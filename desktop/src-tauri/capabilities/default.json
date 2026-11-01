@@ -13,6 +13,7 @@
     "allow-get-event",
     "allow-post-action",
     "allow-scan-now",
-    "allow-scan-status"
+    "allow-scan-status",
+    "allow-set-next-deadline"
   ]
 }

@@ -15,10 +15,15 @@ struct PopupGuard {
     suppress_blur: AtomicBool,
 }
 
+/// The next upcoming deadline (epoch ms) the frontend last saw in the feed.
+#[derive(Default)]
+struct NextDeadline(Mutex<Option<i64>>);
+
 const BLUR_GRACE: Duration = Duration::from_millis(150);
 /// The free Render instance takes 30-60s to cold start, and /feed is what wakes it.
 const FEED_TIMEOUT: Duration = Duration::from_secs(60);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+const TOOLTIP_TICK: Duration = Duration::from_secs(30);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -37,6 +42,7 @@ pub fn run() {
             hidden_at: Mutex::new(None),
             suppress_blur: AtomicBool::new(false),
         })
+        .manage(NextDeadline::default())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.hide();
@@ -86,6 +92,11 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+            let handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                update_tooltip(&handle);
+                std::thread::sleep(TOOLTIP_TICK);
+            });
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -115,10 +126,55 @@ pub fn run() {
             get_event,
             post_action,
             scan_now,
-            scan_status
+            scan_status,
+            set_next_deadline
         ])
         .run(tauri::generate_context!())
         .expect("error while running Radar");
+}
+
+#[tauri::command]
+fn set_next_deadline(app: tauri::AppHandle, at_ms: Option<i64>) {
+    if let Some(state) = app.try_state::<NextDeadline>() {
+        if let Ok(mut slot) = state.0.lock() {
+            *slot = at_ms.filter(|at| *at > 0);
+        }
+    }
+    update_tooltip(&app);
+}
+
+/// Tray tooltip shows the time to the next deadline the frontend reported.
+fn update_tooltip(app: &tauri::AppHandle) {
+    let Some(tray) = app.tray_by_id("radar") else {
+        return;
+    };
+    let next = app
+        .try_state::<NextDeadline>()
+        .and_then(|state| state.0.lock().ok().and_then(|slot| *slot));
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_millis() as i64)
+        .unwrap_or(0);
+    let text = match next {
+        Some(at) if at > now_ms => format!("Radar — next deadline in {}", countdown(at - now_ms)),
+        _ => "Radar".to_string(),
+    };
+    let _ = tray.set_tooltip(Some(text));
+}
+
+fn countdown(remaining_ms: i64) -> String {
+    let minutes = remaining_ms / 60_000;
+    if minutes < 1 {
+        return "under a minute".to_string();
+    }
+    if minutes < 60 {
+        return format!("{minutes} min");
+    }
+    let hours = minutes / 60;
+    if hours < 48 {
+        return format!("{hours} h {} min", minutes % 60);
+    }
+    format!("{} d {} h", hours / 24, hours % 24)
 }
 
 #[derive(serde::Serialize)]

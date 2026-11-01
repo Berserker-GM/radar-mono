@@ -202,7 +202,7 @@ export function formatNextClock(iso: string | null): string | null {
   return `${hour}:${minute} ${dayPeriod}`;
 }
 
-function formatDuration(ms: number): string {
+export function formatDuration(ms: number): string {
   const minutes = Math.max(1, Math.round(ms / 60000));
   if (minutes < 60) return minutes === 1 ? "1 minute" : `${minutes} minutes`;
   const hours = Math.round(minutes / 60);

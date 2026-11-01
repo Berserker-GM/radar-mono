@@ -15,6 +15,9 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "fastapi>=0.143.0",
     "uvicorn>=0.54.0",
+    "dateparser>=1.2.2",
+    "feedparser>=6.0.11",
+    "icalendar>=6.1.0",
 ]
 
 [dependency-groups]
@@ -31,7 +34,7 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "live: calls Google Calendar or the configured LLM; set RADAR_LIVE_TESTS=1 to run",
+    "live: calls Google Calendar; set RADAR_LIVE_TESTS=1 to run",
 ]
 
 [tool.ruff]
